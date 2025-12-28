@@ -3,7 +3,6 @@ package com.psyanidex.recipeflow.data
 import com.google.gson.annotations.SerializedName
 import java.time.LocalDate
 
-// NUEVO: Enum para el tipo de comida
 enum class MealType {
     LUNCH,
     DINNER
@@ -33,16 +32,17 @@ data class Recipe(
     val steps: List<String>
 )
 
-// CAMBIO: PlannedRecipe ahora incluye el tipo de comida
 data class PlannedRecipe(
     val date: LocalDate,
     val recipe: Recipe,
     val mealType: MealType
 )
 
+// CAMBIO: 'ingredient' ahora es 'text' y se añade 'isCustom'
 data class ShoppingListItem(
-    val ingredient: String,
-    val isChecked: Boolean = false
+    val text: String,
+    val isChecked: Boolean = false,
+    val isCustom: Boolean = false // Para diferenciar ingredientes de otros productos
 )
 
 data class ImportRequest(val html: String)

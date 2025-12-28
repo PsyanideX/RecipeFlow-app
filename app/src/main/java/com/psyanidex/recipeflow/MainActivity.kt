@@ -61,9 +61,8 @@ fun MainScreen(initialUrl: String?) {
     val plannedRecipes = remember { mutableStateListOf<PlannedRecipe>() }
     val shoppingList = remember { mutableStateListOf<ShoppingListItem>() }
 
-    // NUEVO: La lógica de la lista de la compra ahora está en una función reutilizable
-    fun updateShoppingList() {
-        val ingredients = plannedRecipes
+    fun updateIngredientsInShoppingList() {
+        val newIngredientItems = plannedRecipes
             .flatMap { it.recipe.ingredients }
             .groupBy { it.details.name.lowercase(Locale.getDefault()) }
             .map { (name, entries) ->
@@ -82,9 +81,13 @@ fun MainScreen(initialUrl: String?) {
                     .joinToString(", ")
                 "${name.replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.getDefault()) else it.toString() }}: $processedQuantities"
             }
+            .map { ShoppingListItem(text = it, isCustom = false) }
+
+        val customItems = shoppingList.filter { it.isCustom }
         shoppingList.clear()
-        shoppingList.addAll(ingredients.map { ShoppingListItem(it) })
-        scope.launch { storageManager.saveShoppingList(shoppingList) } // Guardar automáticamente
+        shoppingList.addAll(newIngredientItems)
+        shoppingList.addAll(customItems)
+        scope.launch { storageManager.saveShoppingList(shoppingList) }
     }
 
     fun fetchRecipes() {
@@ -103,9 +106,9 @@ fun MainScreen(initialUrl: String?) {
     }
 
     LaunchedEffect(Unit) {
-        // Cargar datos persistidos al iniciar
         plannedRecipes.addAll(storageManager.plannedRecipesFlow.first())
-        updateShoppingList() // Recalcular la lista al inicio
+        shoppingList.addAll(storageManager.shoppingListFlow.first())
+        updateIngredientsInShoppingList()
         fetchRecipes()
     }
 
@@ -157,26 +160,41 @@ fun MainScreen(initialUrl: String?) {
                         onAddPlannedRecipe = { plannedRecipe ->
                             plannedRecipes.add(plannedRecipe)
                             scope.launch { storageManager.savePlannedRecipes(plannedRecipes) }
-                            updateShoppingList() // Actualización en tiempo real
+                            updateIngredientsInShoppingList()
                         },
                         onRemovePlannedRecipe = { plannedRecipe ->
                             plannedRecipes.remove(plannedRecipe)
                             scope.launch { storageManager.savePlannedRecipes(plannedRecipes) }
-                            updateShoppingList() // Actualización en tiempo real
+                            updateIngredientsInShoppingList()
                         }
                     )
                 }
                 composable("shopping") {
                     ShoppingListScreen(
                         items = shoppingList,
-                        onItemCheckedChanged = { index, isChecked ->
-                            shoppingList[index] = shoppingList[index].copy(isChecked = isChecked)
+                        onItemCheckedChanged = { item, isChecked ->
+                            val index = shoppingList.indexOf(item)
+                            if (index != -1) {
+                                shoppingList[index] = item.copy(isChecked = isChecked)
+                                scope.launch { storageManager.saveShoppingList(shoppingList) }
+                            }
+                        },
+                        onAddItem = { text ->
+                            shoppingList.add(ShoppingListItem(text = text, isCustom = true))
+                            scope.launch { storageManager.saveShoppingList(shoppingList) }
+                        },
+                        onRemoveItem = { item ->
+                            shoppingList.remove(item)
                             scope.launch { storageManager.saveShoppingList(shoppingList) }
                         },
                         onClearList = { 
-                            plannedRecipes.clear() // Limpiar también los planes
-                            updateShoppingList()
-                            scope.launch { storageManager.savePlannedRecipes(plannedRecipes) }
+                            // CORRECCIÓN: Limpiar planes y TODA la lista de la compra
+                            plannedRecipes.clear()
+                            shoppingList.clear()
+                            scope.launch {
+                                storageManager.savePlannedRecipes(plannedRecipes)
+                                storageManager.saveShoppingList(shoppingList)
+                            }
                         }
                     )
                 }
