@@ -12,6 +12,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -24,10 +25,12 @@ import com.psyanidex.recipeflow.ui.screens.RecipeDetailScreen
 import com.psyanidex.recipeflow.ui.screens.RecipeListScreen
 import com.psyanidex.recipeflow.ui.screens.ShoppingListScreen
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.jsoup.Jsoup
 import java.time.LocalDate
+import java.util.Locale
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -51,10 +54,38 @@ fun MainScreen(initialUrl: String?) {
     val navController = rememberNavController()
     val scope = rememberCoroutineScope()
     var isProcessing by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    val storageManager = remember { StorageManager(context) }
 
     val recipes = remember { mutableStateListOf<Recipe>() }
     val plannedRecipes = remember { mutableStateListOf<PlannedRecipe>() }
     val shoppingList = remember { mutableStateListOf<ShoppingListItem>() }
+
+    // NUEVO: La lógica de la lista de la compra ahora está en una función reutilizable
+    fun updateShoppingList() {
+        val ingredients = plannedRecipes
+            .flatMap { it.recipe.ingredients }
+            .groupBy { it.details.name.lowercase(Locale.getDefault()) }
+            .map { (name, entries) ->
+                val processedQuantities = entries
+                    .groupBy { it.unit.lowercase(Locale.getDefault()) }
+                    .map { (unit, unitEntries) ->
+                        val quantitiesAsDouble = unitEntries.map { it.quantity.toDoubleOrNull() }
+                        if (quantitiesAsDouble.any { it == null }) {
+                            unitEntries.joinToString(", ") { "${it.quantity} ${it.unit}" }
+                        } else {
+                            val sum = quantitiesAsDouble.sumOf { it!! }
+                            val formattedSum = if (sum % 1.0 == 0.0) sum.toInt().toString() else sum.toString()
+                            "$formattedSum ${unitEntries.first().unit}"
+                        }
+                    }
+                    .joinToString(", ")
+                "${name.replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.getDefault()) else it.toString() }}: $processedQuantities"
+            }
+        shoppingList.clear()
+        shoppingList.addAll(ingredients.map { ShoppingListItem(it) })
+        scope.launch { storageManager.saveShoppingList(shoppingList) } // Guardar automáticamente
+    }
 
     fun fetchRecipes() {
         scope.launch {
@@ -72,6 +103,9 @@ fun MainScreen(initialUrl: String?) {
     }
 
     LaunchedEffect(Unit) {
+        // Cargar datos persistidos al iniciar
+        plannedRecipes.addAll(storageManager.plannedRecipesFlow.first())
+        updateShoppingList() // Recalcular la lista al inicio
         fetchRecipes()
     }
 
@@ -122,18 +156,13 @@ fun MainScreen(initialUrl: String?) {
                         plannedRecipes = plannedRecipes,
                         onAddPlannedRecipe = { plannedRecipe ->
                             plannedRecipes.add(plannedRecipe)
+                            scope.launch { storageManager.savePlannedRecipes(plannedRecipes) }
+                            updateShoppingList() // Actualización en tiempo real
                         },
-                        onGenerateShoppingList = { ingredients ->
-                            shoppingList.clear()
-                            shoppingList.addAll(ingredients.map { ShoppingListItem(it) })
-                            // CAMBIO: Usar la misma lógica de navegación que la barra inferior
-                            navController.navigate("shopping") {
-                                popUpTo(navController.graph.startDestinationId) {
-                                    saveState = true
-                                }
-                                launchSingleTop = true
-                                restoreState = true
-                            }
+                        onRemovePlannedRecipe = { plannedRecipe ->
+                            plannedRecipes.remove(plannedRecipe)
+                            scope.launch { storageManager.savePlannedRecipes(plannedRecipes) }
+                            updateShoppingList() // Actualización en tiempo real
                         }
                     )
                 }
@@ -142,8 +171,13 @@ fun MainScreen(initialUrl: String?) {
                         items = shoppingList,
                         onItemCheckedChanged = { index, isChecked ->
                             shoppingList[index] = shoppingList[index].copy(isChecked = isChecked)
+                            scope.launch { storageManager.saveShoppingList(shoppingList) }
                         },
-                        onClearList = { shoppingList.clear() }
+                        onClearList = { 
+                            plannedRecipes.clear() // Limpiar también los planes
+                            updateShoppingList()
+                            scope.launch { storageManager.savePlannedRecipes(plannedRecipes) }
+                        }
                     )
                 }
             }

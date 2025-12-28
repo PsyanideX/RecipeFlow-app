@@ -11,6 +11,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -29,11 +31,10 @@ fun CalendarScreen(
     allRecipes: List<Recipe>,
     plannedRecipes: List<PlannedRecipe>,
     onAddPlannedRecipe: (PlannedRecipe) -> Unit,
-    onGenerateShoppingList: (List<String>) -> Unit
+    onRemovePlannedRecipe: (PlannedRecipe) -> Unit
 ) {
     val today = LocalDate.now()
     val futureDays = List(10) { today.plusDays(it.toLong()) }
-    val selectedDays = remember { mutableStateMapOf<LocalDate, Boolean>() }
     var showDialogFor by remember { mutableStateOf<Pair<LocalDate, MealType>?>(null) }
 
     showDialogFor?.let { (date, mealType) ->
@@ -53,55 +54,20 @@ fun CalendarScreen(
         Text("Planificador Semanal", style = MaterialTheme.typography.headlineMedium)
         Spacer(modifier = Modifier.height(16.dp))
 
-        LazyColumn(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        LazyColumn(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             items(futureDays) { date ->
                 DayCard(
                     date = date,
                     lunchRecipe = plannedRecipes.find { it.date == date && it.mealType == MealType.LUNCH }?.recipe,
                     dinnerRecipe = plannedRecipes.find { it.date == date && it.mealType == MealType.DINNER }?.recipe,
-                    isSelected = selectedDays.getOrDefault(date, false),
-                    onDateSelected = { isSelected -> selectedDays[date] = isSelected },
-                    onAddRecipeClick = { mealType -> showDialogFor = date to mealType }
+                    onAddRecipeClick = { mealType -> showDialogFor = date to mealType },
+                    onRemoveRecipeClick = { mealType ->
+                        plannedRecipes
+                            .find { it.date == date && it.mealType == mealType }
+                            ?.let { onRemovePlannedRecipe(it) }
+                    }
                 )
             }
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        Button(
-            onClick = {
-                // LÓGICA DE AGRUPACIÓN Y SUMA DE INGREDIENTES
-                val ingredients = plannedRecipes
-                    .filter { selectedDays.getOrDefault(it.date, false) }
-                    .flatMap { it.recipe.ingredients }
-                    .groupBy { it.details.name.lowercase() } // 1. Agrupar por nombre de ingrediente
-                    .map { (name, entries) ->
-                        val processedQuantities = entries
-                            .groupBy { it.unit.lowercase() } // 2. Agrupar por unidad
-                            .map { (unit, unitEntries) ->
-                                val quantitiesAsDouble = unitEntries.map { it.quantity.toDoubleOrNull() }
-
-                                if (quantitiesAsDouble.any { it == null }) {
-                                    // 3a. Si alguna cantidad no es un número, listar por separado
-                                    unitEntries.joinToString(", ") { "${it.quantity} ${it.unit}" }
-                                } else {
-                                    // 3b. Si todas son números, sumarlas
-                                    val sum = quantitiesAsDouble.sumOf { it!! }
-                                    val formattedSum = if (sum % 1.0 == 0.0) sum.toInt().toString() else sum.toString()
-                                    "$formattedSum ${unitEntries.first().unit}"
-                                }
-                            }
-                            .joinToString(", ")
-
-                        // 4. Formatear el resultado final
-                        "${name.replaceFirstChar { it.titlecase(Locale.getDefault()) }}: $processedQuantities"
-                    }
-                onGenerateShoppingList(ingredients)
-            },
-            modifier = Modifier.fillMaxWidth(),
-            enabled = selectedDays.any { it.value }
-        ) {
-            Text("Generar Lista de la Compra")
         }
     }
 }
@@ -111,33 +77,32 @@ fun DayCard(
     date: LocalDate,
     lunchRecipe: Recipe?,
     dinnerRecipe: Recipe?,
-    isSelected: Boolean,
-    onDateSelected: (Boolean) -> Unit,
-    onAddRecipeClick: (MealType) -> Unit
+    onAddRecipeClick: (MealType) -> Unit,
+    onRemoveRecipeClick: (MealType) -> Unit
 ) {
     val formatter = DateTimeFormatter.ofPattern("EEEE, d 'de' MMMM", Locale("es", "ES"))
 
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(12.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                Checkbox(checked = isSelected, onCheckedChange = onDateSelected)
-                Text(
-                    text = date.format(formatter).replaceFirstChar { it.titlecase(Locale.ROOT) },
-                    style = MaterialTheme.typography.titleMedium
-                )
-            }
+            Text(
+                text = date.format(formatter).replaceFirstChar { it.titlecase(Locale.ROOT) },
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+            )
             Spacer(modifier = Modifier.height(8.dp))
 
             MealRow(
                 mealType = MealType.LUNCH,
                 recipe = lunchRecipe,
-                onAddClick = { onAddRecipeClick(MealType.LUNCH) }
+                onAddClick = { onAddRecipeClick(MealType.LUNCH) },
+                onRemoveClick = { onRemoveRecipeClick(MealType.LUNCH) }
             )
             Spacer(modifier = Modifier.height(8.dp))
             MealRow(
                 mealType = MealType.DINNER,
                 recipe = dinnerRecipe,
-                onAddClick = { onAddRecipeClick(MealType.DINNER) }
+                onAddClick = { onAddRecipeClick(MealType.DINNER) },
+                onRemoveClick = { onRemoveRecipeClick(MealType.DINNER) }
             )
         }
     }
@@ -147,7 +112,8 @@ fun DayCard(
 private fun MealRow(
     mealType: MealType,
     recipe: Recipe?,
-    onAddClick: () -> Unit
+    onAddClick: () -> Unit,
+    onRemoveClick: () -> Unit
 ) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -169,6 +135,10 @@ private fun MealRow(
         if (recipe == null) {
             TextButton(onClick = onAddClick) {
                 Text("Añadir")
+            }
+        } else {
+            IconButton(onClick = onRemoveClick) {
+                Icon(Icons.Default.Close, contentDescription = "Quitar receta")
             }
         }
     }
