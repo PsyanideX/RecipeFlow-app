@@ -27,6 +27,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.jsoup.Jsoup
+import java.time.LocalDate
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -106,10 +107,10 @@ fun MainScreen(initialUrl: String?) {
                 }
                 composable(
                     route = "recipeDetail/{recipeId}",
-                    arguments = listOf(navArgument("recipeId") { type = NavType.IntType }) // Cambiado a IntType
+                    arguments = listOf(navArgument("recipeId") { type = NavType.IntType })
                 ) {
                     backStackEntry ->
-                    val recipeId = backStackEntry.arguments?.getInt("recipeId") // Cambiado a getInt
+                    val recipeId = backStackEntry.arguments?.getInt("recipeId")
                     val recipe = recipes.find { it.id == recipeId }
                     if (recipe != null) {
                         RecipeDetailScreen(recipe = recipe, onNavigateUp = { navController.navigateUp() })
@@ -125,8 +126,13 @@ fun MainScreen(initialUrl: String?) {
                         onGenerateShoppingList = { ingredients ->
                             shoppingList.clear()
                             shoppingList.addAll(ingredients.map { ShoppingListItem(it) })
+                            // CAMBIO: Usar la misma lógica de navegación que la barra inferior
                             navController.navigate("shopping") {
+                                popUpTo(navController.graph.startDestinationId) {
+                                    saveState = true
+                                }
                                 launchSingleTop = true
+                                restoreState = true
                             }
                         }
                     )

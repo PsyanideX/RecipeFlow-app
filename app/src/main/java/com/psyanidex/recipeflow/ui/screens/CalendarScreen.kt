@@ -32,10 +32,8 @@ fun CalendarScreen(
     onGenerateShoppingList: (List<String>) -> Unit
 ) {
     val today = LocalDate.now()
-    // CAMBIO: Mostrar 10 días en lugar de 7
     val futureDays = List(10) { today.plusDays(it.toLong()) }
     val selectedDays = remember { mutableStateMapOf<LocalDate, Boolean>() }
-    // CAMBIO: El estado del diálogo ahora guarda la fecha Y el tipo de comida
     var showDialogFor by remember { mutableStateOf<Pair<LocalDate, MealType>?>(null) }
 
     showDialogFor?.let { (date, mealType) ->
@@ -72,10 +70,32 @@ fun CalendarScreen(
 
         Button(
             onClick = {
+                // LÓGICA DE AGRUPACIÓN Y SUMA DE INGREDIENTES
                 val ingredients = plannedRecipes
                     .filter { selectedDays.getOrDefault(it.date, false) }
-                    .flatMap { it.recipe.ingredients.map { ingredient -> ingredient.toString() } }
-                    .distinct()
+                    .flatMap { it.recipe.ingredients }
+                    .groupBy { it.details.name.lowercase() } // 1. Agrupar por nombre de ingrediente
+                    .map { (name, entries) ->
+                        val processedQuantities = entries
+                            .groupBy { it.unit.lowercase() } // 2. Agrupar por unidad
+                            .map { (unit, unitEntries) ->
+                                val quantitiesAsDouble = unitEntries.map { it.quantity.toDoubleOrNull() }
+
+                                if (quantitiesAsDouble.any { it == null }) {
+                                    // 3a. Si alguna cantidad no es un número, listar por separado
+                                    unitEntries.joinToString(", ") { "${it.quantity} ${it.unit}" }
+                                } else {
+                                    // 3b. Si todas son números, sumarlas
+                                    val sum = quantitiesAsDouble.sumOf { it!! }
+                                    val formattedSum = if (sum % 1.0 == 0.0) sum.toInt().toString() else sum.toString()
+                                    "$formattedSum ${unitEntries.first().unit}"
+                                }
+                            }
+                            .joinToString(", ")
+
+                        // 4. Formatear el resultado final
+                        "${name.replaceFirstChar { it.titlecase(Locale.getDefault()) }}: $processedQuantities"
+                    }
                 onGenerateShoppingList(ingredients)
             },
             modifier = Modifier.fillMaxWidth(),
@@ -108,7 +128,6 @@ fun DayCard(
             }
             Spacer(modifier = Modifier.height(8.dp))
 
-            // NUEVO: Sección para Comida y Cena
             MealRow(
                 mealType = MealType.LUNCH,
                 recipe = lunchRecipe,
@@ -124,7 +143,6 @@ fun DayCard(
     }
 }
 
-// NUEVO: Composable para una fila de comida (Comida/Cena)
 @Composable
 private fun MealRow(
     mealType: MealType,
@@ -160,7 +178,7 @@ private fun MealRow(
 @Composable
 private fun AddRecipeDialog(
     date: LocalDate,
-    mealType: MealType, // CAMBIO: Recibe el tipo de comida
+    mealType: MealType,
     allRecipes: List<Recipe>,
     onDismiss: () -> Unit,
     onRecipeSelected: (Recipe) -> Unit
