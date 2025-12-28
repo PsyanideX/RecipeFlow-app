@@ -68,7 +68,7 @@ fun CalendarScreen(
             onClick = {
                 val ingredients = plannedRecipes
                     .filter { selectedDays.getOrDefault(it.date, false) }
-                    .flatMap { it.recipe.ingredients }
+                    .flatMap { it.recipe.ingredients.map { ingredient -> ingredient.toString() } } // Convertir Ingredient a String
                     .distinct()
                 onGenerateShoppingList(ingredients)
             },

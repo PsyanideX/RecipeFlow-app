@@ -2,9 +2,11 @@ package com.psyanidex.recipeflow
 
 import android.content.Intent
 import android.os.Bundle
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -15,9 +17,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
-import com.psyanidex.recipeflow.data.PlannedRecipe
-import com.psyanidex.recipeflow.data.Recipe
-import com.psyanidex.recipeflow.data.ShoppingListItem
+import com.psyanidex.recipeflow.data.*
 import com.psyanidex.recipeflow.ui.navigation.BottomNavigationBar
 import com.psyanidex.recipeflow.ui.screens.CalendarScreen
 import com.psyanidex.recipeflow.ui.screens.RecipeDetailScreen
@@ -27,7 +27,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.jsoup.Jsoup
-import java.time.LocalDate
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -52,33 +51,45 @@ fun MainScreen(initialUrl: String?) {
     val scope = rememberCoroutineScope()
     var isProcessing by remember { mutableStateOf(false) }
 
-    // --- ESTADO CENTRALIZADO DE LA APP ---
-    val recipes = remember {
-        mutableStateListOf(
-            Recipe(title = "Tortilla de Patatas", ingredients = listOf("3 Patatas", "5 Huevos", "1 Cebolla", "Aceite de Oliva", "Sal"), steps = listOf("Pelar y cortar...", "Batir huevos...", "Mezclar y cuajar.")),
-            Recipe(title = "Lentejas", ingredients = listOf("300g Lentejas", "1 Chorizo", "1 Pimiento", "1 Zanahoria", "Agua"), steps = listOf("Poner todo en la olla...", "Cocer 45 min."))
-        )
-    }
-
-    val plannedRecipes = remember {
-        mutableStateListOf(
-            PlannedRecipe(LocalDate.now().plusDays(1), recipes.first()),
-            PlannedRecipe(LocalDate.now().plusDays(3), recipes.last())
-        )
-    }
-
+    val recipes = remember { mutableStateListOf<Recipe>() }
+    val plannedRecipes = remember { mutableStateListOf<PlannedRecipe>() }
     val shoppingList = remember { mutableStateListOf<ShoppingListItem>() }
 
+    fun fetchRecipes() {
+        scope.launch {
+            isProcessing = true
+            try {
+                val fetchedRecipes = ApiClient.instance.getRecipes()
+                recipes.clear()
+                recipes.addAll(fetchedRecipes)
+            } catch (e: Exception) {
+                Log.e("MainScreen", "Error al obtener las recetas", e)
+            } finally {
+                isProcessing = false
+            }
+        }
+    }
 
-    // Procesamiento de URL compartida
+    LaunchedEffect(Unit) {
+        fetchRecipes()
+    }
+
     LaunchedEffect(initialUrl) {
         initialUrl?.let { url ->
             isProcessing = true
             scope.launch {
-                val extractedRecipe = processUrlWithJsoup(url)
-                recipes.add(extractedRecipe)
-                isProcessing = false
-                navController.navigate("recipes")
+                try {
+                    val doc = withContext(Dispatchers.IO) { Jsoup.connect(url).get() }
+                    doc.select("script, style, header, footer, nav, aside, iframe, .ads, .advertisement, .ad-container, #comments, .comments-area").remove()
+                    val cleanHtml = doc.body().html()
+                    ApiClient.instance.importRecipe(ImportRequest(html = cleanHtml))
+                    fetchRecipes()
+                    navController.navigate("recipes")
+                } catch (e: Exception) {
+                    Log.e("MainScreen", "Error al importar la receta", e)
+                } finally {
+                    isProcessing = false
+                }
             }
         }
     }
@@ -86,7 +97,7 @@ fun MainScreen(initialUrl: String?) {
     Scaffold(
         bottomBar = { BottomNavigationBar(navController) }
     ) { padding ->
-        Box(modifier = Modifier.padding(padding)) {
+        Box(modifier = Modifier.fillMaxSize().padding(padding)) {
             NavHost(navController = navController, startDestination = "recipes") {
                 composable("recipes") {
                     RecipeListScreen(recipes = recipes, onRecipeClick = { recipe ->
@@ -95,10 +106,10 @@ fun MainScreen(initialUrl: String?) {
                 }
                 composable(
                     route = "recipeDetail/{recipeId}",
-                    arguments = listOf(navArgument("recipeId") { type = NavType.StringType })
+                    arguments = listOf(navArgument("recipeId") { type = NavType.IntType }) // Cambiado a IntType
                 ) {
                     backStackEntry ->
-                    val recipeId = backStackEntry.arguments?.getString("recipeId")
+                    val recipeId = backStackEntry.arguments?.getInt("recipeId") // Cambiado a getInt
                     val recipe = recipes.find { it.id == recipeId }
                     if (recipe != null) {
                         RecipeDetailScreen(recipe = recipe, onNavigateUp = { navController.navigateUp() })
@@ -132,23 +143,10 @@ fun MainScreen(initialUrl: String?) {
             }
 
             if (isProcessing) {
-                CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator()
+                }
             }
         }
-    }
-}
-
-// --- LÓGICA DE EXTRACCIÓN (MOCK + JSOUP) ---
-suspend fun processUrlWithJsoup(url: String): Recipe = withContext(Dispatchers.IO) {
-    try {
-        val doc = Jsoup.connect(url).get()
-        doc.select("script, style, header, footer, nav, aside, iframe, .ads, .advertisement, .ad-container, #comments, .comments-area").remove()
-        Recipe(
-            title = doc.title().take(30) ?: "Receta Importada",
-            ingredients = listOf("Ingrediente Extraído 1", "Ingrediente Extraído 2"),
-            steps = listOf("Paso 1 detectado en el HTML", "Paso 2 detectado en el HTML")
-        )
-    } catch (e: Exception) {
-        Recipe(title = "Error al importar", ingredients = emptyList(), steps = emptyList())
     }
 }
