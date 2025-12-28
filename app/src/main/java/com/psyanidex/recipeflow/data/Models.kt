@@ -38,11 +38,24 @@ data class PlannedRecipe(
     val mealType: MealType
 )
 
-// CAMBIO: 'ingredient' ahora es 'text' y se añade 'isCustom'
 data class ShoppingListItem(
     val text: String,
     val isChecked: Boolean = false,
-    val isCustom: Boolean = false // Para diferenciar ingredientes de otros productos
+    val isCustom: Boolean = false
 )
 
 data class ImportRequest(val html: String)
+
+// --- NUEVO: Modelos para la petición de actualización ---
+
+data class UpdateIngredientRequest(
+    val name: String,
+    val quantity: String,
+    val unit: String
+)
+
+data class UpdateRecipeRequest(
+    val title: String,
+    val steps: List<String>,
+    val ingredients: List<UpdateIngredientRequest>
+)

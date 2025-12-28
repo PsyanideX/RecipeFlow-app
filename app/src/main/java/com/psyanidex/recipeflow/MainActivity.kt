@@ -3,6 +3,7 @@ package com.psyanidex.recipeflow
 import android.content.Intent
 import android.os.Bundle
 import android.util.Log
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Box
@@ -150,7 +151,33 @@ fun MainScreen(initialUrl: String?) {
                     val recipeId = backStackEntry.arguments?.getInt("recipeId")
                     val recipe = recipes.find { it.id == recipeId }
                     if (recipe != null) {
-                        RecipeDetailScreen(recipe = recipe, onNavigateUp = { navController.navigateUp() })
+                        RecipeDetailScreen(
+                            recipe = recipe,
+                            onNavigateUp = { navController.navigateUp() },
+                            onDeleteConfirm = {
+                                scope.launch {
+                                    isProcessing = true
+                                    try {
+                                        ApiClient.instance.deleteRecipe(recipe.id)
+                                        recipes.remove(recipe)
+                                        plannedRecipes.removeAll { it.recipe.id == recipe.id }
+                                        updateIngredientsInShoppingList()
+                                        storageManager.savePlannedRecipes(plannedRecipes)
+                                        withContext(Dispatchers.Main) {
+                                            Toast.makeText(context, "Receta eliminada", Toast.LENGTH_SHORT).show()
+                                            navController.popBackStack()
+                                        }
+                                    } catch (e: Exception) {
+                                        Log.e("MainScreen", "Error al eliminar la receta", e)
+                                        withContext(Dispatchers.Main) {
+                                            Toast.makeText(context, "Error al eliminar", Toast.LENGTH_SHORT).show()
+                                        }
+                                    } finally {
+                                        isProcessing = false
+                                    }
+                                }
+                            }
+                        )
                     }
                 }
                 composable("calendar") {
@@ -188,7 +215,6 @@ fun MainScreen(initialUrl: String?) {
                             scope.launch { storageManager.saveShoppingList(shoppingList) }
                         },
                         onClearList = { 
-                            // CORRECCIÓN: Limpiar planes y TODA la lista de la compra
                             plannedRecipes.clear()
                             shoppingList.clear()
                             scope.launch {
