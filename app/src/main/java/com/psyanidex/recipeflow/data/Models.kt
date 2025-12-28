@@ -3,40 +3,45 @@ package com.psyanidex.recipeflow.data
 import com.google.gson.annotations.SerializedName
 import java.time.LocalDate
 
-// Objeto anidado que contiene el nombre del ingrediente
+// NUEVO: Enum para el tipo de comida
+enum class MealType {
+    LUNCH,
+    DINNER
+}
+
 data class IngredientDetails(
     val id: Int,
     val name: String
 )
 
-// Objeto que representa la relación entre receta e ingrediente (tabla join)
 data class RecipeIngredient(
     val id: Int,
     val quantity: String,
     val unit: String,
-    @SerializedName("ingredient") // Asegura que Gson mapee el objeto anidado correctamente
+    @SerializedName("ingredient")
     val details: IngredientDetails
 ) {
-    // Sobrescribimos toString para que la UI siga funcionando como antes
     override fun toString(): String {
         return "$quantity $unit de ${details.name}"
     }
 }
 
 data class Recipe(
-    val id: Int, // El ID ahora es un Int
+    val id: Int,
     val title: String,
     val ingredients: List<RecipeIngredient>,
     val steps: List<String>
 )
 
+// CAMBIO: PlannedRecipe ahora incluye el tipo de comida
 data class PlannedRecipe(
     val date: LocalDate,
-    val recipe: Recipe
+    val recipe: Recipe,
+    val mealType: MealType
 )
 
 data class ShoppingListItem(
-    val ingredient: String, // Se mantiene como String, se rellena con RecipeIngredient.toString()
+    val ingredient: String,
     val isChecked: Boolean = false
 )
 
