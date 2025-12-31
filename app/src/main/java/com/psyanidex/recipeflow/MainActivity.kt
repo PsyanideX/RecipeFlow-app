@@ -22,10 +22,12 @@ import androidx.navigation.navArgument
 import com.psyanidex.recipeflow.data.*
 import com.psyanidex.recipeflow.ui.navigation.BottomNavigationBar
 import com.psyanidex.recipeflow.ui.screens.CalendarScreen
+import com.psyanidex.recipeflow.ui.screens.EditRecipeScreen
 import com.psyanidex.recipeflow.ui.screens.RecipeDetailScreen
 import com.psyanidex.recipeflow.ui.screens.RecipeListScreen
 import com.psyanidex.recipeflow.ui.screens.ShoppingListScreen
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -116,19 +118,93 @@ fun MainScreen(initialUrl: String?) {
     LaunchedEffect(initialUrl) {
         initialUrl?.let { url ->
             isProcessing = true
-            scope.launch {
-                try {
-                    val doc = withContext(Dispatchers.IO) { Jsoup.connect(url).get() }
-                    doc.select("script, style, header, footer, nav, aside, iframe, .ads, .advertisement, .ad-container, #comments, .comments-area").remove()
-                    val cleanHtml = doc.body().html()
-                    ApiClient.instance.importRecipe(ImportRequest(html = cleanHtml))
-                    fetchRecipes()
-                    navController.navigate("recipes")
-                } catch (e: Exception) {
-                    Log.e("MainScreen", "Error al importar la receta", e)
-                } finally {
-                    isProcessing = false
+            try {
+                val doc = withContext(Dispatchers.IO) { 
+                    Jsoup.connect(url)
+                        .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36")
+                        .referrer(url)
+                        .get()
                 }
+                // Fase 1: Eliminar etiquetas de contenido no deseado
+                doc.select("script, img, video, audio, canvas, style, header, footer, nav, aside, iframe, form, button, input, .ads, .advertisement, .ad-container, .ad, #comments, " +
+                        "[style*='display: none'], [style*='visibility: hidden'], .modal, .popup, .share, .social, .promo, .related-posts, .newsletter, .follow, " +
+                        "[class*='cookie'], [id*='cookie'], [class*='footer'], [class*='foot'], [class*='menu'], [class*='search'], [class*='comments'], " +
+                        "[class*='deeplink'], [class*='ecommerce']").remove()
+                
+                // Fase 2: Conservar el texto de los enlaces, pero eliminar los propios enlaces.
+                doc.select("a").unwrap()
+
+                // Fase 3: Aplanar el HTML para eliminar anidaciones innecesarias
+                var changed = true
+                while (changed) {
+                    changed = false
+                    for (el in doc.body().select("div, section")) {
+                        if (el.childrenSize() == 1 && el.ownText().isBlank()) {
+                            el.child(0).unwrap()
+                            changed = true
+                            break // Reinicia el bucle porque la estructura ha cambiado
+                        }
+                    }
+                }
+
+                // Fase 4: Limpieza manual de elementos vacíos en orden inverso.
+                doc.body().select("*").reversed().forEach { element ->
+                    if (!element.hasText() && element.children().isEmpty()) {
+                        element.remove()
+                    }
+                }
+
+                // Fase 5: Eliminar atributos innecesarios para reducir tamaño
+                doc.body().select("*").forEach { element ->
+                    element.removeAttr("class")
+                    element.removeAttr("id")
+                    element.removeAttr("style")
+                }
+
+                val cleanHtml = doc.body().html()
+                
+                val importResponse = ApiClient.instance.importRecipe(ImportRequest(html = cleanHtml))
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(context, importResponse.message, Toast.LENGTH_SHORT).show()
+                }
+
+                var currentStatus = importResponse.status
+                var recipeId = importResponse.id
+
+                delay(120000)
+
+                while (currentStatus != "COMPLETED" && currentStatus != "FAILED") {
+                    try {
+                        val recipeState = ApiClient.instance.getRecipeById(recipeId)
+                        currentStatus = recipeState.status ?: ""
+                    } catch (e: Exception) {
+                        currentStatus = "FAILED"
+                        Log.e("MainScreen", "Error durante el sondeo", e)
+                    }
+
+                    if (currentStatus != "COMPLETED" && currentStatus != "FAILED") {
+                        delay(15000)
+                    }
+                }
+
+                withContext(Dispatchers.Main) {
+                    if (currentStatus == "COMPLETED") {
+                        Toast.makeText(context, "Receta importada con éxito", Toast.LENGTH_SHORT).show()
+                        fetchRecipes()
+                        navController.navigate("recipeDetail/$recipeId")
+                    } else {
+                        Toast.makeText(context, "La importación ha fallado", Toast.LENGTH_LONG).show()
+                        fetchRecipes()
+                    }
+                }
+
+            } catch (e: Exception) {
+                Log.e("MainScreen", "Error al iniciar la importación", e)
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(context, "Error al iniciar la importación", Toast.LENGTH_SHORT).show()
+                }
+            } finally {
+                isProcessing = false
             }
         }
     }
@@ -139,9 +215,31 @@ fun MainScreen(initialUrl: String?) {
         Box(modifier = Modifier.fillMaxSize().padding(padding)) {
             NavHost(navController = navController, startDestination = "recipes") {
                 composable("recipes") {
-                    RecipeListScreen(recipes = recipes, onRecipeClick = { recipe ->
-                        navController.navigate("recipeDetail/${recipe.id}")
-                    })
+                    RecipeListScreen(
+                        recipes = recipes, 
+                        onRecipeClick = { recipe ->
+                            navController.navigate("recipeDetail/${recipe.id}")
+                        },
+                        onDeleteRecipe = { recipe ->
+                            scope.launch {
+                                isProcessing = true
+                                try {
+                                    ApiClient.instance.deleteRecipe(recipe.id)
+                                    recipes.remove(recipe)
+                                    withContext(Dispatchers.Main) {
+                                        Toast.makeText(context, "Receta eliminada", Toast.LENGTH_SHORT).show()
+                                    }
+                                } catch (e: Exception) {
+                                    Log.e("MainScreen", "Error al eliminar la receta", e)
+                                    withContext(Dispatchers.Main) {
+                                        Toast.makeText(context, "Error al eliminar", Toast.LENGTH_SHORT).show()
+                                    }
+                                } finally {
+                                    isProcessing = false
+                                }
+                            }
+                        }
+                    )
                 }
                 composable(
                     route = "recipeDetail/{recipeId}",
@@ -154,6 +252,7 @@ fun MainScreen(initialUrl: String?) {
                         RecipeDetailScreen(
                             recipe = recipe,
                             onNavigateUp = { navController.navigateUp() },
+                            onEditClick = { navController.navigate("editRecipe/${recipe.id}") },
                             onDeleteConfirm = {
                                 scope.launch {
                                     isProcessing = true
@@ -171,6 +270,46 @@ fun MainScreen(initialUrl: String?) {
                                         Log.e("MainScreen", "Error al eliminar la receta", e)
                                         withContext(Dispatchers.Main) {
                                             Toast.makeText(context, "Error al eliminar", Toast.LENGTH_SHORT).show()
+                                        }
+                                    } finally {
+                                        isProcessing = false
+                                    }
+                                }
+                            }
+                        )
+                    }
+                }
+                composable(
+                    route = "editRecipe/{recipeId}",
+                    arguments = listOf(navArgument("recipeId") { type = NavType.IntType })
+                ) {
+                    backStackEntry ->
+                    val recipeId = backStackEntry.arguments?.getInt("recipeId")
+                    val recipe = recipes.find { it.id == recipeId }
+                    if (recipe != null) {
+                        EditRecipeScreen(
+                            recipe = recipe,
+                            onNavigateUp = { navController.navigateUp() },
+                            onSave = { updatedRecipe ->
+                                scope.launch {
+                                    isProcessing = true
+                                    try {
+                                        val savedRecipe = ApiClient.instance.updateRecipe(recipe.id, updatedRecipe)
+                                        val index = recipes.indexOf(recipe)
+                                        if (index != -1) {
+                                            recipes[index] = savedRecipe
+                                        }
+                                        plannedRecipes.replaceAll { if (it.recipe.id == recipe.id) it.copy(recipe = savedRecipe) else it }
+                                        updateIngredientsInShoppingList()
+                                        storageManager.savePlannedRecipes(plannedRecipes)
+                                        withContext(Dispatchers.Main) {
+                                            Toast.makeText(context, "Receta guardada", Toast.LENGTH_SHORT).show()
+                                            navController.popBackStack()
+                                        }
+                                    } catch (e: Exception) {
+                                        Log.e("MainScreen", "Error al guardar la receta", e)
+                                        withContext(Dispatchers.Main) {
+                                            Toast.makeText(context, "Error al guardar", Toast.LENGTH_SHORT).show()
                                         }
                                     } finally {
                                         isProcessing = false

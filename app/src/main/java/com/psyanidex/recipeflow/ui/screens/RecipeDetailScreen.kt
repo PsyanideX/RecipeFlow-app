@@ -1,14 +1,20 @@
 package com.psyanidex.recipeflow.ui.screens
 
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.psyanidex.recipeflow.data.Recipe
@@ -18,7 +24,8 @@ import com.psyanidex.recipeflow.data.Recipe
 fun RecipeDetailScreen(
     recipe: Recipe,
     onNavigateUp: () -> Unit,
-    onDeleteConfirm: () -> Unit // NUEVO: Callback para confirmar el borrado
+    onDeleteConfirm: () -> Unit,
+    onEditClick: () -> Unit // NUEVO
 ) {
     var showDeleteDialog by remember { mutableStateOf(false) }
 
@@ -42,7 +49,10 @@ fun RecipeDetailScreen(
                     }
                 },
                 actions = {
-                    // NUEVO: Botón para iniciar el borrado
+                    // NUEVO: Botón para ir a editar
+                    IconButton(onClick = onEditClick) {
+                        Icon(Icons.Default.Edit, contentDescription = "Editar receta")
+                    }
                     IconButton(onClick = { showDeleteDialog = true }) {
                         Icon(Icons.Default.Delete, contentDescription = "Eliminar receta")
                     }
@@ -50,32 +60,42 @@ fun RecipeDetailScreen(
             )
         }
     ) { padding ->
-        Column(modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp)) {
-            Text("Ingredientes", style = MaterialTheme.typography.headlineSmall)
-            Spacer(modifier = Modifier.height(8.dp))
-            LazyColumn {
-                items(recipe.ingredients.size) { index ->
-                    Text(text = "• ${recipe.ingredients[index]}", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(bottom = 4.dp))
-                }
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .padding(16.dp)
+        ) {
+            item {
+                Text("Ingredientes", style = MaterialTheme.typography.headlineSmall)
+                Spacer(modifier = Modifier.height(8.dp))
+            }
+            items(recipe.ingredients) { ingredient ->
+                Text(
+                    text = "• $ingredient",
+                    style = MaterialTheme.typography.bodyLarge,
+                    modifier = Modifier.padding(bottom = 4.dp)
+                )
             }
 
-            Spacer(modifier = Modifier.height(24.dp))
+            item {
+                Spacer(modifier = Modifier.height(24.dp))
+            }
 
-            Text("Pasos", style = MaterialTheme.typography.headlineSmall)
-            Spacer(modifier = Modifier.height(8.dp))
-            LazyColumn {
-                itemsIndexed(recipe.steps) { index, step ->
-                    Row(modifier = Modifier.padding(bottom = 8.dp)) {
-                        Text("${index + 1}. ", style = MaterialTheme.typography.bodyLarge)
-                        Text(step, style = MaterialTheme.typography.bodyLarge)
-                    }
+            item {
+                Text("Pasos", style = MaterialTheme.typography.headlineSmall)
+                Spacer(modifier = Modifier.height(8.dp))
+            }
+            itemsIndexed(recipe.steps) { index, step ->
+                Row(modifier = Modifier.padding(bottom = 8.dp)) {
+                    Text("${index + 1}. ", style = MaterialTheme.typography.bodyLarge)
+                    Text(step, style = MaterialTheme.typography.bodyLarge)
                 }
             }
         }
     }
 }
 
-// NUEVO: Diálogo de confirmación de borrado
 @Composable
 private fun DeleteConfirmationDialog(onDismiss: () -> Unit, onConfirm: () -> Unit) {
     AlertDialog(

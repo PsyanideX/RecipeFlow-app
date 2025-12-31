@@ -12,8 +12,9 @@ interface RecipeApiService {
     @GET("recipes")
     suspend fun getRecipes(): List<Recipe>
 
+    // CAMBIO: Ahora retorna el estado de la importación
     @POST("recipes/import")
-    suspend fun importRecipe(@Body request: ImportRequest): Recipe
+    suspend fun importRecipe(@Body request: ImportRequest): ImportStatusResponse
 
     @GET("recipes/{id}")
     suspend fun getRecipeById(@Path("id") id: Int): Recipe

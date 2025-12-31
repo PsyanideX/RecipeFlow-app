@@ -29,7 +29,8 @@ data class Recipe(
     val id: Int,
     val title: String,
     val ingredients: List<RecipeIngredient>,
-    val steps: List<String>
+    val steps: List<String>,
+    val status: String? // NUEVO: Para monitorear el estado ("COMPLETED", "FAILED", etc.)
 )
 
 data class PlannedRecipe(
@@ -46,8 +47,15 @@ data class ShoppingListItem(
 
 data class ImportRequest(val html: String)
 
-// --- NUEVO: Modelos para la petición de actualización ---
+// NUEVO: Respuesta inicial del endpoint de importación
+data class ImportStatusResponse(
+    val id: Int,
+    val status: String,
+    val message: String
+)
 
+
+// --- Modelos para la petición de actualización (existentes) ---
 data class UpdateIngredientRequest(
     val name: String,
     val quantity: String,
