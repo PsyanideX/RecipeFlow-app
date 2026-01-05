@@ -29,6 +29,7 @@ class StorageManager(private val context: Context) {
     private val plannedRecipesKey = stringPreferencesKey("planned_recipes_json")
     private val shoppingListKey = stringPreferencesKey("shopping_list_json")
     private val favoriteRecipesKey = stringPreferencesKey("favorite_recipes_json")
+    private val plannedDessertsKey = stringPreferencesKey("planned_desserts_json")
 
     // --- Planificación ---
 
@@ -71,6 +72,21 @@ class StorageManager(private val context: Context) {
 
     val favoriteRecipesFlow: Flow<List<Recipe>> = context.dataStore.data.map {
         val json = it[favoriteRecipesKey] ?: "[]"
+        val type = object : TypeToken<List<Recipe>>() {}.type
+        gson.fromJson(json, type)
+    }
+
+    // --- Postres Planificados ---
+
+    suspend fun savePlannedDesserts(recipes: List<Recipe>) {
+        val json = gson.toJson(recipes)
+        context.dataStore.edit {
+            it[plannedDessertsKey] = json
+        }
+    }
+
+    val plannedDessertsFlow: Flow<List<Recipe>> = context.dataStore.data.map {
+        val json = it[plannedDessertsKey] ?: "[]"
         val type = object : TypeToken<List<Recipe>>() {}.type
         gson.fromJson(json, type)
     }

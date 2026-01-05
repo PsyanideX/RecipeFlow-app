@@ -95,7 +95,11 @@ fun RecipeListScreen(
                     onClick = { onRecipeClick(recipe) }
                 ) {
                     ListItem(
-                        headlineContent = { Text(recipe.title) },
+                        headlineContent = { Text(
+                            text = recipe.title.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() },
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        ) },
                         supportingContent = {
                             when (recipe.status) {
                                 "COMPLETED" -> Text("${recipe.ingredients.size} ingredientes")

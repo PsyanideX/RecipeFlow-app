@@ -62,13 +62,17 @@ fun MainScreen(initialUrl: String?) {
 
     val recipes = remember { mutableStateListOf<Recipe>() }
     val plannedRecipes = remember { mutableStateListOf<PlannedRecipe>() }
+    val plannedDesserts = remember { mutableStateListOf<Recipe>() }
     val shoppingList = remember { mutableStateListOf<ShoppingListItem>() }
     var selectedTab by remember { mutableStateOf("Todas") }
     var isNetworkAvailable by remember { mutableStateOf(true) }
 
     fun updateIngredientsInShoppingList() {
-        val newIngredientItems = plannedRecipes
-            .flatMap { it.recipe.ingredients }
+        val dailyIngredients = plannedRecipes.flatMap { it.recipe.ingredients }
+        val dessertIngredients = plannedDesserts.flatMap { it.ingredients }
+        val allIngredients = dailyIngredients + dessertIngredients
+
+        val newIngredientItems = allIngredients
             .groupBy { it.details.name.lowercase(Locale.getDefault()) }
             .map { (name, entries) ->
                 val processedQuantities = entries
@@ -152,6 +156,7 @@ fun MainScreen(initialUrl: String?) {
 
     LaunchedEffect(Unit) {
         plannedRecipes.addAll(storageManager.plannedRecipesFlow.first())
+        plannedDesserts.addAll(storageManager.plannedDessertsFlow.first())
         shoppingList.addAll(storageManager.shoppingListFlow.first())
         updateIngredientsInShoppingList()
         fetchRecipes()
@@ -175,10 +180,9 @@ fun MainScreen(initialUrl: String?) {
                         .referrer(url)
                         .get()
                 }
-                doc.select("script, img, video, audio, canvas, style, header, footer, nav, aside, iframe, form, button, input, .ads, .advertisement, .ad-container, .ad, #comments, " +
-                        "[style*='display: none'], [style*='visibility: hidden'], .modal, .popup, .share, .social, .promo, .related-posts, .newsletter, .follow, " +
-                        "[class*='cookie'], [id*='cookie'], [class*='footer'], [class*='foot'], [class*='menu'], [class*='search'], [class*='comments'], " +
-                        "[class*='deeplink'], [class*='ecommerce']").remove()
+                doc.head().remove()
+                val allSelectors = HtmlCleanerSelectors.aevitar + HtmlCleanerSelectors.especificas
+                doc.select(allSelectors.joinToString(", ")).remove()
                 doc.select("a").unwrap()
                 var changed = true
                 while (changed) {
@@ -406,6 +410,7 @@ fun MainScreen(initialUrl: String?) {
                     CalendarScreen(
                         allRecipes = recipes,
                         plannedRecipes = plannedRecipes,
+                        plannedDesserts = plannedDesserts,
                         onAddPlannedRecipe = { plannedRecipe ->
                             plannedRecipes.add(plannedRecipe)
                             scope.launch { storageManager.savePlannedRecipes(plannedRecipes) }
@@ -414,6 +419,16 @@ fun MainScreen(initialUrl: String?) {
                         onRemovePlannedRecipe = { plannedRecipe ->
                             plannedRecipes.remove(plannedRecipe)
                             scope.launch { storageManager.savePlannedRecipes(plannedRecipes) }
+                            updateIngredientsInShoppingList()
+                        },
+                        onAddPlannedDessert = { dessert ->
+                            plannedDesserts.add(dessert)
+                            scope.launch { storageManager.savePlannedDesserts(plannedDesserts) }
+                            updateIngredientsInShoppingList()
+                        },
+                        onRemovePlannedDessert = { dessert ->
+                            plannedDesserts.remove(dessert)
+                            scope.launch { storageManager.savePlannedDesserts(plannedDesserts) }
                             updateIngredientsInShoppingList()
                         }
                     )
@@ -438,9 +453,11 @@ fun MainScreen(initialUrl: String?) {
                         },
                         onClearList = { 
                             plannedRecipes.clear()
+                            plannedDesserts.clear()
                             shoppingList.clear()
                             scope.launch {
                                 storageManager.savePlannedRecipes(plannedRecipes)
+                                storageManager.savePlannedDesserts(plannedDesserts)
                                 storageManager.saveShoppingList(shoppingList)
                             }
                         }
