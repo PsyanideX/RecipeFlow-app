@@ -13,6 +13,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.psyanidex.recipeflow.data.Category
 import com.psyanidex.recipeflow.data.Recipe
 import com.psyanidex.recipeflow.data.UpdateIngredientRequest
 import com.psyanidex.recipeflow.data.UpdateRecipeRequest
@@ -26,12 +27,23 @@ fun EditRecipeScreen(
 ) {
     // Estados para los campos editables
     var title by remember { mutableStateOf(recipe.title) }
+    var category by remember { mutableStateOf(recipe.category) }
+    var isFavorite by remember { mutableStateOf(recipe.isFavorite) }
     val ingredients = remember { 
         recipe.ingredients.map { 
             mutableStateOf(UpdateIngredientRequest(it.details.name, it.quantity, it.unit))
         }.toMutableStateList() 
     }
     val steps = remember { recipe.steps.map { mutableStateOf(it) }.toMutableStateList() }
+    var categoryExpanded by remember { mutableStateOf(false) }
+
+    fun getCategoryTitle(category: Category): String {
+        return when (category) {
+            Category.MAIN -> "Principal"
+            Category.DESSERT -> "Postre"
+            Category.SOUP_CREAM -> "Sopas"
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -46,7 +58,7 @@ fun EditRecipeScreen(
                     IconButton(onClick = {
                         val updatedIngredients = ingredients.map { it.value }
                         val updatedSteps = steps.map { it.value }
-                        onSave(UpdateRecipeRequest(title, updatedSteps, updatedIngredients))
+                        onSave(UpdateRecipeRequest(title, updatedSteps, updatedIngredients, category, isFavorite))
                     }) {
                         Icon(Icons.Default.Save, contentDescription = "Guardar")
                     }
@@ -63,8 +75,57 @@ fun EditRecipeScreen(
                     label = { Text("Título") },
                     modifier = Modifier.fillMaxWidth()
                 )
+                Spacer(modifier = Modifier.height(16.dp))
+            }
+
+            // --- CATEGORÍA Y FAVORITO ---
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    ExposedDropdownMenuBox(
+                        expanded = categoryExpanded,
+                        onExpandedChange = { categoryExpanded = !categoryExpanded },
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        OutlinedTextField(
+                            value = getCategoryTitle(category),
+                            onValueChange = {},
+                            readOnly = true,
+                            label = { Text("Categoría") },
+                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = categoryExpanded) },
+                            modifier = Modifier.menuAnchor().fillMaxWidth()
+                        )
+                        ExposedDropdownMenu(
+                            expanded = categoryExpanded,
+                            onDismissRequest = { categoryExpanded = false }
+                        ) {
+                            Category.values().forEach { selectionCategory ->
+                                DropdownMenuItem(
+                                    text = { Text(getCategoryTitle(selectionCategory)) },
+                                    onClick = {
+                                        category = selectionCategory
+                                        categoryExpanded = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+                    Spacer(modifier = Modifier.width(16.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("Favorita")
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Switch(
+                            checked = isFavorite,
+                            onCheckedChange = { isFavorite = it }
+                        )
+                    }
+                }
                 Spacer(modifier = Modifier.height(24.dp))
             }
+
 
             // --- INGREDIENTES ---
             item {

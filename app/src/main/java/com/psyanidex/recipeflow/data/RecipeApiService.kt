@@ -6,11 +6,15 @@ import retrofit2.http.GET
 import retrofit2.http.PATCH
 import retrofit2.http.POST
 import retrofit2.http.Path
+import retrofit2.http.Query
 
 interface RecipeApiService {
 
     @GET("recipes")
-    suspend fun getRecipes(): List<Recipe>
+    suspend fun getRecipes(
+        @Query("category") category: String? = null,
+        @Query("favorite") favorite: Boolean? = null
+    ): List<Recipe>
 
     // CAMBIO: Ahora retorna el estado de la importación
     @POST("recipes/import")

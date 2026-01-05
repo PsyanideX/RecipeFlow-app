@@ -8,6 +8,12 @@ enum class MealType {
     DINNER
 }
 
+enum class Category {
+    MAIN,
+    DESSERT,
+    SOUP_CREAM
+}
+
 data class IngredientDetails(
     val id: Int,
     val name: String
@@ -30,7 +36,9 @@ data class Recipe(
     val title: String,
     val ingredients: List<RecipeIngredient>,
     val steps: List<String>,
-    val status: String? // NUEVO: Para monitorear el estado ("COMPLETED", "FAILED", etc.)
+    val status: String?, // NUEVO: Para monitorear el estado ("COMPLETED", "FAILED", etc.)
+    val category: Category,
+    val isFavorite: Boolean
 )
 
 data class PlannedRecipe(
@@ -65,5 +73,7 @@ data class UpdateIngredientRequest(
 data class UpdateRecipeRequest(
     val title: String,
     val steps: List<String>,
-    val ingredients: List<UpdateIngredientRequest>
+    val ingredients: List<UpdateIngredientRequest>,
+    val category: Category,
+    val isFavorite: Boolean
 )

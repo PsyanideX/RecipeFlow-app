@@ -63,6 +63,8 @@ fun MainScreen(initialUrl: String?) {
     val recipes = remember { mutableStateListOf<Recipe>() }
     val plannedRecipes = remember { mutableStateListOf<PlannedRecipe>() }
     val shoppingList = remember { mutableStateListOf<ShoppingListItem>() }
+    var selectedTab by remember { mutableStateOf("Todas") }
+    var isNetworkAvailable by remember { mutableStateOf(true) }
 
     fun updateIngredientsInShoppingList() {
         val newIngredientItems = plannedRecipes
@@ -93,15 +95,55 @@ fun MainScreen(initialUrl: String?) {
         scope.launch { storageManager.saveShoppingList(shoppingList) }
     }
 
-    fun fetchRecipes() {
+    fun fetchRecipes(category: String? = null, favorite: Boolean? = null) {
         scope.launch {
             isProcessing = true
             try {
-                val fetchedRecipes = ApiClient.instance.getRecipes()
+                val fetchedRecipes = ApiClient.instance.getRecipes(category, favorite)
                 recipes.clear()
                 recipes.addAll(fetchedRecipes)
+                isNetworkAvailable = true
             } catch (e: Exception) {
-                Log.e("MainScreen", "Error al obtener las recetas", e)
+                isNetworkAvailable = false
+                Log.e("MainScreen", "Error al obtener las recetas. Mostrando datos locales.", e)
+                if (selectedTab == "Todas" || selectedTab == "Favoritas") {
+                    val favoriteRecipes = storageManager.favoriteRecipesFlow.first()
+                    recipes.clear()
+                    recipes.addAll(favoriteRecipes)
+                    if (selectedTab == "Todas") {
+                        withContext(Dispatchers.Main) {
+                            Toast.makeText(context, "Sin conexión. Mostrando favoritas.", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                } else {
+                    recipes.clear()
+                }
+            } finally {
+                isProcessing = false
+            }
+        }
+    }
+
+    fun syncFavoriteRecipes() {
+        scope.launch {
+            isProcessing = true
+            try {
+                val favoriteRecipes = ApiClient.instance.getRecipes(favorite = true)
+                storageManager.saveFavoriteRecipes(favoriteRecipes)
+                if (selectedTab == "Favoritas") {
+                    recipes.clear()
+                    recipes.addAll(favoriteRecipes)
+                }
+                isNetworkAvailable = true
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(context, "Favoritas sincronizadas", Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                isNetworkAvailable = false
+                Log.e("MainScreen", "Error al sincronizar las favoritas", e)
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(context, "Error de sincronización. Comprueba la conexión.", Toast.LENGTH_LONG).show()
+                }
             } finally {
                 isProcessing = false
             }
@@ -115,26 +157,29 @@ fun MainScreen(initialUrl: String?) {
         fetchRecipes()
     }
 
+    LaunchedEffect(selectedTab) {
+        when (selectedTab) {
+            "Todas" -> fetchRecipes()
+            "Favoritas" -> fetchRecipes(favorite = true)
+            else -> fetchRecipes(category = selectedTab)
+        }
+    }
+
     LaunchedEffect(initialUrl) {
         initialUrl?.let { url ->
             isProcessing = true
             try {
-                val doc = withContext(Dispatchers.IO) { 
+                val doc = withContext(Dispatchers.IO) {
                     Jsoup.connect(url)
                         .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36")
                         .referrer(url)
                         .get()
                 }
-                // Fase 1: Eliminar etiquetas de contenido no deseado
                 doc.select("script, img, video, audio, canvas, style, header, footer, nav, aside, iframe, form, button, input, .ads, .advertisement, .ad-container, .ad, #comments, " +
                         "[style*='display: none'], [style*='visibility: hidden'], .modal, .popup, .share, .social, .promo, .related-posts, .newsletter, .follow, " +
                         "[class*='cookie'], [id*='cookie'], [class*='footer'], [class*='foot'], [class*='menu'], [class*='search'], [class*='comments'], " +
                         "[class*='deeplink'], [class*='ecommerce']").remove()
-                
-                // Fase 2: Conservar el texto de los enlaces, pero eliminar los propios enlaces.
                 doc.select("a").unwrap()
-
-                // Fase 3: Aplanar el HTML para eliminar anidaciones innecesarias
                 var changed = true
                 while (changed) {
                     changed = false
@@ -142,37 +187,29 @@ fun MainScreen(initialUrl: String?) {
                         if (el.childrenSize() == 1 && el.ownText().isBlank()) {
                             el.child(0).unwrap()
                             changed = true
-                            break // Reinicia el bucle porque la estructura ha cambiado
+                            break
                         }
                     }
                 }
-
-                // Fase 4: Limpieza manual de elementos vacíos en orden inverso.
                 doc.body().select("*").reversed().forEach { element ->
                     if (!element.hasText() && element.children().isEmpty()) {
                         element.remove()
                     }
                 }
-
-                // Fase 5: Eliminar atributos innecesarios para reducir tamaño
                 doc.body().select("*").forEach { element ->
                     element.removeAttr("class")
                     element.removeAttr("id")
                     element.removeAttr("style")
                 }
-
                 val cleanHtml = doc.body().html()
-                
                 val importResponse = ApiClient.instance.importRecipe(ImportRequest(html = cleanHtml))
+                isNetworkAvailable = true
                 withContext(Dispatchers.Main) {
                     Toast.makeText(context, importResponse.message, Toast.LENGTH_SHORT).show()
                 }
-
                 var currentStatus = importResponse.status
                 var recipeId = importResponse.id
-
                 delay(120000)
-
                 while (currentStatus != "COMPLETED" && currentStatus != "FAILED") {
                     try {
                         val recipeState = ApiClient.instance.getRecipeById(recipeId)
@@ -181,12 +218,10 @@ fun MainScreen(initialUrl: String?) {
                         currentStatus = "FAILED"
                         Log.e("MainScreen", "Error durante el sondeo", e)
                     }
-
                     if (currentStatus != "COMPLETED" && currentStatus != "FAILED") {
                         delay(15000)
                     }
                 }
-
                 withContext(Dispatchers.Main) {
                     if (currentStatus == "COMPLETED") {
                         Toast.makeText(context, "Receta importada con éxito", Toast.LENGTH_SHORT).show()
@@ -197,8 +232,8 @@ fun MainScreen(initialUrl: String?) {
                         fetchRecipes()
                     }
                 }
-
             } catch (e: Exception) {
+                isNetworkAvailable = false
                 Log.e("MainScreen", "Error al iniciar la importación", e)
                 withContext(Dispatchers.Main) {
                     Toast.makeText(context, "Error al iniciar la importación", Toast.LENGTH_SHORT).show()
@@ -216,7 +251,9 @@ fun MainScreen(initialUrl: String?) {
             NavHost(navController = navController, startDestination = "recipes") {
                 composable("recipes") {
                     RecipeListScreen(
-                        recipes = recipes, 
+                        recipes = recipes,
+                        selectedTab = selectedTab,
+                        onTabSelected = { selectedTab = it },
                         onRecipeClick = { recipe ->
                             navController.navigate("recipeDetail/${recipe.id}")
                         },
@@ -226,10 +263,12 @@ fun MainScreen(initialUrl: String?) {
                                 try {
                                     ApiClient.instance.deleteRecipe(recipe.id)
                                     recipes.remove(recipe)
+                                    isNetworkAvailable = true
                                     withContext(Dispatchers.Main) {
                                         Toast.makeText(context, "Receta eliminada", Toast.LENGTH_SHORT).show()
                                     }
                                 } catch (e: Exception) {
+                                    isNetworkAvailable = false
                                     Log.e("MainScreen", "Error al eliminar la receta", e)
                                     withContext(Dispatchers.Main) {
                                         Toast.makeText(context, "Error al eliminar", Toast.LENGTH_SHORT).show()
@@ -238,7 +277,47 @@ fun MainScreen(initialUrl: String?) {
                                     isProcessing = false
                                 }
                             }
-                        }
+                        },
+                        onFavoriteClick = { recipe ->
+                            scope.launch {
+                                val updatedRecipe = recipe.copy(isFavorite = !recipe.isFavorite)
+                                try {
+                                    val savedRecipe = ApiClient.instance.updateRecipe(recipe.id,
+                                        UpdateRecipeRequest(
+                                            title = updatedRecipe.title,
+                                            steps = updatedRecipe.steps,
+                                            ingredients = updatedRecipe.ingredients.map {
+                                                UpdateIngredientRequest(it.details.name, it.quantity, it.unit)
+                                            },
+                                            category = updatedRecipe.category,
+                                            isFavorite = updatedRecipe.isFavorite
+                                        )
+                                    )
+                                    isNetworkAvailable = true
+                                    val index = recipes.indexOf(recipe)
+                                    if (index != -1) {
+                                        recipes[index] = savedRecipe
+                                    }
+                                    val favoriteRecipes = storageManager.favoriteRecipesFlow.first().toMutableList()
+                                    if (savedRecipe.isFavorite) {
+                                        if (favoriteRecipes.find { it.id == savedRecipe.id } == null) {
+                                            favoriteRecipes.add(savedRecipe)
+                                        }
+                                    } else {
+                                        favoriteRecipes.removeAll { it.id == savedRecipe.id }
+                                    }
+                                    storageManager.saveFavoriteRecipes(favoriteRecipes)
+                                } catch (e: Exception) {
+                                    isNetworkAvailable = false
+                                    Log.e("MainScreen", "Error al actualizar la receta", e)
+                                    withContext(Dispatchers.Main) {
+                                        Toast.makeText(context, "Error al actualizar", Toast.LENGTH_SHORT).show()
+                                    }
+                                }
+                            }
+                        },
+                        isNetworkAvailable = isNetworkAvailable,
+                        onSyncFavorites = { syncFavoriteRecipes() }
                     )
                 }
                 composable(
@@ -262,11 +341,13 @@ fun MainScreen(initialUrl: String?) {
                                         plannedRecipes.removeAll { it.recipe.id == recipe.id }
                                         updateIngredientsInShoppingList()
                                         storageManager.savePlannedRecipes(plannedRecipes)
+                                        isNetworkAvailable = true
                                         withContext(Dispatchers.Main) {
                                             Toast.makeText(context, "Receta eliminada", Toast.LENGTH_SHORT).show()
                                             navController.popBackStack()
                                         }
                                     } catch (e: Exception) {
+                                        isNetworkAvailable = false
                                         Log.e("MainScreen", "Error al eliminar la receta", e)
                                         withContext(Dispatchers.Main) {
                                             Toast.makeText(context, "Error al eliminar", Toast.LENGTH_SHORT).show()
@@ -302,11 +383,13 @@ fun MainScreen(initialUrl: String?) {
                                         plannedRecipes.replaceAll { if (it.recipe.id == recipe.id) it.copy(recipe = savedRecipe) else it }
                                         updateIngredientsInShoppingList()
                                         storageManager.savePlannedRecipes(plannedRecipes)
+                                        isNetworkAvailable = true
                                         withContext(Dispatchers.Main) {
                                             Toast.makeText(context, "Receta guardada", Toast.LENGTH_SHORT).show()
                                             navController.popBackStack()
                                         }
                                     } catch (e: Exception) {
+                                        isNetworkAvailable = false
                                         Log.e("MainScreen", "Error al guardar la receta", e)
                                         withContext(Dispatchers.Main) {
                                             Toast.makeText(context, "Error al guardar", Toast.LENGTH_SHORT).show()
