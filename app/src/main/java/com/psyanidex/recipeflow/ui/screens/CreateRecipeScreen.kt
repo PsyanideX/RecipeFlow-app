@@ -14,27 +14,21 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.psyanidex.recipeflow.data.Category
-import com.psyanidex.recipeflow.data.Recipe
 import com.psyanidex.recipeflow.data.UpdateIngredientRequest
 import com.psyanidex.recipeflow.data.UpdateRecipeRequest
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun EditRecipeScreen(
-    recipe: Recipe,
+fun CreateRecipeScreen(
     onSave: (UpdateRecipeRequest) -> Unit,
     onNavigateUp: () -> Unit
 ) {
-    // Estados para los campos editables
-    var title by remember { mutableStateOf(recipe.title) }
-    var category by remember { mutableStateOf(recipe.category) }
-    var isFavorite by remember { mutableStateOf(recipe.isFavorite) }
-    val ingredients = remember { 
-        recipe.ingredients.map { 
-            mutableStateOf(UpdateIngredientRequest(it.details.name, it.quantity, it.unit))
-        }.toMutableStateList() 
-    }
-    val steps = remember { recipe.steps.map { mutableStateOf(it) }.toMutableStateList() }
+    // Estados para los campos vacíos inicialmente
+    var title by remember { mutableStateOf("") }
+    var category by remember { mutableStateOf(Category.MAIN) }
+    var isFavorite by remember { mutableStateOf(false) }
+    val ingredients = remember { mutableStateListOf<MutableState<UpdateIngredientRequest>>() }
+    val steps = remember { mutableStateListOf<MutableState<String>>() }
     var categoryExpanded by remember { mutableStateOf(false) }
 
     fun getCategoryTitle(category: Category): String {
@@ -50,18 +44,23 @@ fun EditRecipeScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Editar Receta") },
+                title = { Text("Nueva Receta") },
                 navigationIcon = {
                     IconButton(onClick = onNavigateUp) {
                         Icon(Icons.Default.ArrowBack, contentDescription = "Cancelar")
                     }
                 },
                 actions = {
-                    IconButton(onClick = {
-                        val updatedIngredients = ingredients.map { it.value }
-                        val updatedSteps = steps.map { it.value }
-                        onSave(UpdateRecipeRequest(title, updatedSteps, updatedIngredients, category, isFavorite))
-                    }) {
+                    IconButton(
+                        onClick = {
+                            if (title.isNotBlank()) {
+                                val updatedIngredients = ingredients.map { it.value }
+                                val updatedSteps = steps.map { it.value }
+                                onSave(UpdateRecipeRequest(title, updatedSteps, updatedIngredients, category, isFavorite))
+                            }
+                        },
+                        enabled = title.isNotBlank()
+                    ) {
                         Icon(Icons.Default.Save, contentDescription = "Guardar")
                     }
                 }
@@ -75,7 +74,8 @@ fun EditRecipeScreen(
                     value = title,
                     onValueChange = { title = it },
                     label = { Text("Título") },
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    isError = title.isBlank()
                 )
                 Spacer(modifier = Modifier.height(16.dp))
             }

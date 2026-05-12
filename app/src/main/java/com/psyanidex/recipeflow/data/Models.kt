@@ -11,7 +11,9 @@ enum class MealType {
 enum class Category {
     MAIN,
     DESSERT,
-    SOUP_CREAM
+    SOUP_CREAM,
+    ACOMPANANTES,
+    ENTRANTES
 }
 
 data class IngredientDetails(

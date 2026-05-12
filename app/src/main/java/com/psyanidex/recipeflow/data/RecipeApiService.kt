@@ -16,6 +16,9 @@ interface RecipeApiService {
         @Query("favorite") favorite: Boolean? = null
     ): List<Recipe>
 
+    @POST("recipes")
+    suspend fun createRecipe(@Body request: UpdateRecipeRequest): Recipe
+
     // CAMBIO: Ahora retorna el estado de la importación
     @POST("recipes/import")
     suspend fun importRecipe(@Body request: ImportRequest): ImportStatusResponse

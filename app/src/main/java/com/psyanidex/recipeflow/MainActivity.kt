@@ -21,11 +21,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.psyanidex.recipeflow.data.*
 import com.psyanidex.recipeflow.ui.navigation.BottomNavigationBar
-import com.psyanidex.recipeflow.ui.screens.CalendarScreen
-import com.psyanidex.recipeflow.ui.screens.EditRecipeScreen
-import com.psyanidex.recipeflow.ui.screens.RecipeDetailScreen
-import com.psyanidex.recipeflow.ui.screens.RecipeListScreen
-import com.psyanidex.recipeflow.ui.screens.ShoppingListScreen
+import com.psyanidex.recipeflow.ui.screens.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
@@ -314,8 +310,36 @@ fun MainScreen(initialUrl: String?) {
                                 }
                             }
                         },
+                        onAddRecipeClick = { navController.navigate("createRecipe") },
                         isNetworkAvailable = isNetworkAvailable,
                         onSyncFavorites = { syncFavoriteRecipes() }
+                    )
+                }
+                composable("createRecipe") {
+                    CreateRecipeScreen(
+                        onNavigateUp = { navController.navigateUp() },
+                        onSave = { newRecipe ->
+                            scope.launch {
+                                isProcessing = true
+                                try {
+                                    val savedRecipe = ApiClient.instance.createRecipe(newRecipe)
+                                    recipes.add(savedRecipe)
+                                    isNetworkAvailable = true
+                                    withContext(Dispatchers.Main) {
+                                        Toast.makeText(context, "Receta creada", Toast.LENGTH_SHORT).show()
+                                        navController.popBackStack()
+                                    }
+                                } catch (e: Exception) {
+                                    isNetworkAvailable = false
+                                    Log.e("MainScreen", "Error al crear la receta", e)
+                                    withContext(Dispatchers.Main) {
+                                        Toast.makeText(context, "Error al crear", Toast.LENGTH_SHORT).show()
+                                    }
+                                } finally {
+                                    isProcessing = false
+                                }
+                            }
+                        }
                     )
                 }
                 composable(

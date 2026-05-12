@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Sync
@@ -26,6 +27,7 @@ fun RecipeListScreen(
     onRecipeClick: (Recipe) -> Unit,
     onDeleteRecipe: (Recipe) -> Unit,
     onFavoriteClick: (Recipe) -> Unit,
+    onAddRecipeClick: () -> Unit,
     isNetworkAvailable: Boolean,
     onSyncFavorites: () -> Unit
 ) {
@@ -51,88 +53,98 @@ fun RecipeListScreen(
             "MAIN" -> "Principal"
             "DESSERT" -> "Postre"
             "SOUP_CREAM" -> "Sopas"
+            "ACOMPANANTES" -> "Acompañantes"
+            "ENTRANTES" -> "Entrantes"
             else -> tab
         }
     }
 
-    Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-        Text("Mis Recetas", style = MaterialTheme.typography.headlineMedium)
-        Spacer(modifier = Modifier.height(16.dp))
+    Scaffold(
+        floatingActionButton = {
+            FloatingActionButton(onClick = onAddRecipeClick) {
+                Icon(Icons.Default.Add, contentDescription = "Crear Receta")
+            }
+        }
+    ) { paddingValues ->
+        Column(modifier = Modifier.fillMaxSize().padding(paddingValues).padding(16.dp)) {
+            Text("Mis Recetas", style = MaterialTheme.typography.headlineMedium)
+            Spacer(modifier = Modifier.height(16.dp))
 
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            OutlinedTextField(
-                value = searchQuery,
-                onValueChange = { searchQuery = it },
-                label = { Text("Buscar por nombre o ingrediente...") },
-                modifier = Modifier.weight(1f)
-            )
-            if (selectedTab == "Favoritas") {
-                IconButton(onClick = onSyncFavorites, enabled = isNetworkAvailable) {
-                    Icon(Icons.Default.Sync, contentDescription = "Sincronizar favoritas")
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    label = { Text("Buscar por nombre o ingrediente...") },
+                    modifier = Modifier.weight(1f)
+                )
+                if (selectedTab == "Favoritas") {
+                    IconButton(onClick = onSyncFavorites, enabled = isNetworkAvailable) {
+                        Icon(Icons.Default.Sync, contentDescription = "Sincronizar favoritas")
+                    }
                 }
             }
-        }
-        Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
-        ScrollableTabRow(
-            selectedTabIndex = tabs.indexOf(selectedTab),
-            edgePadding = 0.dp
-        ) {
-            tabs.forEach { tab ->
-                Tab(
-                    text = { Text(
-                        text = getTabTitle(tab),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    ) },
-                    selected = selectedTab == tab,
-                    onClick = { onTabSelected(tab) }
-                )
-            }
-        }
-
-        LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top=8.dp)) {
-            items(filteredRecipes) { recipe ->
-                val isCompleted = recipe.status == "COMPLETED"
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    enabled = isCompleted,
-                    onClick = { onRecipeClick(recipe) }
-                ) {
-                    ListItem(
-                        headlineContent = { Text(
-                            text = recipe.title.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() },
+            ScrollableTabRow(
+                selectedTabIndex = tabs.indexOf(selectedTab),
+                edgePadding = 0.dp
+            ) {
+                tabs.forEach { tab ->
+                    Tab(
+                        text = { Text(
+                            text = getTabTitle(tab),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         ) },
-                        supportingContent = {
-                            when (recipe.status) {
-                                "COMPLETED" -> Text("${recipe.ingredients.size} ingredientes")
-                                "FAILED" -> Text("Error en la importación", color = MaterialTheme.colorScheme.error)
-                                else -> Text("Importando receta...", color = MaterialTheme.colorScheme.secondary)
-                            }
-                        },
-                        trailingContent = {
-                            when (recipe.status) {
-                                "FAILED" -> {
-                                    IconButton(onClick = { onDeleteRecipe(recipe) }) {
-                                        Icon(Icons.Default.Delete, contentDescription = "Eliminar receta fallida")
-                                    }
-                                }
-                                "COMPLETED" -> {
-                                    IconButton(onClick = { onFavoriteClick(recipe) }, enabled = isNetworkAvailable) {
-                                        Icon(
-                                            imageVector = if (recipe.isFavorite) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
-                                            contentDescription = if (recipe.isFavorite) "Quitar de favoritos" else "Añadir a favoritos"
-                                        )
-                                    }
-                                }
-                                else -> {
-                                    CircularProgressIndicator(modifier = Modifier.size(20.dp))
-                                }
-                            }
-                        }
+                        selected = selectedTab == tab,
+                        onClick = { onTabSelected(tab) }
                     )
+                }
+            }
+
+            LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top=8.dp)) {
+                items(filteredRecipes) { recipe ->
+                    val isCompleted = recipe.status == "COMPLETED"
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = isCompleted,
+                        onClick = { onRecipeClick(recipe) }
+                    ) {
+                        ListItem(
+                            headlineContent = { Text(
+                                text = recipe.title.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() },
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            ) },
+                            supportingContent = {
+                                when (recipe.status) {
+                                    "COMPLETED" -> Text("${recipe.ingredients.size} ingredientes")
+                                    "FAILED" -> Text("Error en la importación", color = MaterialTheme.colorScheme.error)
+                                    else -> Text("Importando receta...", color = MaterialTheme.colorScheme.secondary)
+                                }
+                            },
+                            trailingContent = {
+                                when (recipe.status) {
+                                    "FAILED" -> {
+                                        IconButton(onClick = { onDeleteRecipe(recipe) }) {
+                                            Icon(Icons.Default.Delete, contentDescription = "Eliminar receta fallida")
+                                        }
+                                    }
+                                    "COMPLETED" -> {
+                                        IconButton(onClick = { onFavoriteClick(recipe) }, enabled = isNetworkAvailable) {
+                                            Icon(
+                                                imageVector = if (recipe.isFavorite) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
+                                                contentDescription = if (recipe.isFavorite) "Quitar de favoritos" else "Añadir a favoritos"
+                                            )
+                                        }
+                                    }
+                                    else -> {
+                                        CircularProgressIndicator(modifier = Modifier.size(20.dp))
+                                    }
+                                }
+                            }
+                        )
+                    }
                 }
             }
         }
