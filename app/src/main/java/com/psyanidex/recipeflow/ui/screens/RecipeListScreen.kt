@@ -32,8 +32,16 @@ fun RecipeListScreen(
     var searchQuery by remember { mutableStateOf("") }
 
     val filteredRecipes = recipes.filter { recipe ->
-        recipe.title.contains(searchQuery, ignoreCase = true) ||
+        val matchesSearch = recipe.title.contains(searchQuery, ignoreCase = true) ||
                 (recipe.ingredients.any { it.details.name.contains(searchQuery, ignoreCase = true) })
+        
+        val matchesTab = when (selectedTab) {
+            "Todas" -> true
+            "Favoritas" -> recipe.isFavorite
+            else -> recipe.category.name == selectedTab
+        }
+        
+        matchesSearch && matchesTab
     }
 
     val tabs = listOf("Todas", "Favoritas") + Category.values().map { it.name }
@@ -71,8 +79,6 @@ fun RecipeListScreen(
             edgePadding = 0.dp
         ) {
             tabs.forEach { tab ->
-                val isCategoryTab = tab != "Todas" && tab != "Favoritas"
-                val isEnabled = !isCategoryTab || isNetworkAvailable
                 Tab(
                     text = { Text(
                         text = getTabTitle(tab),
@@ -80,8 +86,7 @@ fun RecipeListScreen(
                         overflow = TextOverflow.Ellipsis
                     ) },
                     selected = selectedTab == tab,
-                    onClick = { onTabSelected(tab) },
-                    enabled = isEnabled
+                    onClick = { onTabSelected(tab) }
                 )
             }
         }

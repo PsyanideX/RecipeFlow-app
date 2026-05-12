@@ -99,28 +99,22 @@ fun MainScreen(initialUrl: String?) {
         scope.launch { storageManager.saveShoppingList(shoppingList) }
     }
 
-    fun fetchRecipes(category: String? = null, favorite: Boolean? = null) {
+    fun fetchRecipes() {
         scope.launch {
             isProcessing = true
             try {
-                val fetchedRecipes = ApiClient.instance.getRecipes(category, favorite)
+                val fetchedRecipes = ApiClient.instance.getRecipes()
                 recipes.clear()
                 recipes.addAll(fetchedRecipes)
                 isNetworkAvailable = true
             } catch (e: Exception) {
                 isNetworkAvailable = false
                 Log.e("MainScreen", "Error al obtener las recetas. Mostrando datos locales.", e)
-                if (selectedTab == "Todas" || selectedTab == "Favoritas") {
-                    val favoriteRecipes = storageManager.favoriteRecipesFlow.first()
-                    recipes.clear()
-                    recipes.addAll(favoriteRecipes)
-                    if (selectedTab == "Todas") {
-                        withContext(Dispatchers.Main) {
-                            Toast.makeText(context, "Sin conexión. Mostrando favoritas.", Toast.LENGTH_SHORT).show()
-                        }
-                    }
-                } else {
-                    recipes.clear()
+                val favoriteRecipes = storageManager.favoriteRecipesFlow.first()
+                recipes.clear()
+                recipes.addAll(favoriteRecipes)
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(context, "Sin conexión. Mostrando favoritas.", Toast.LENGTH_SHORT).show()
                 }
             } finally {
                 isProcessing = false
@@ -134,10 +128,18 @@ fun MainScreen(initialUrl: String?) {
             try {
                 val favoriteRecipes = ApiClient.instance.getRecipes(favorite = true)
                 storageManager.saveFavoriteRecipes(favoriteRecipes)
-                if (selectedTab == "Favoritas") {
-                    recipes.clear()
-                    recipes.addAll(favoriteRecipes)
+                
+                // Update favorite status in the local list
+                val favoriteIds = favoriteRecipes.map { it.id }.toSet()
+                recipes.indices.forEach { i ->
+                    val recipe = recipes[i]
+                    if (recipe.id in favoriteIds) {
+                        recipes[i] = recipe.copy(isFavorite = true)
+                    } else if (recipe.isFavorite) {
+                        recipes[i] = recipe.copy(isFavorite = false)
+                    }
                 }
+                
                 isNetworkAvailable = true
                 withContext(Dispatchers.Main) {
                     Toast.makeText(context, "Favoritas sincronizadas", Toast.LENGTH_SHORT).show()
@@ -160,14 +162,6 @@ fun MainScreen(initialUrl: String?) {
         shoppingList.addAll(storageManager.shoppingListFlow.first())
         updateIngredientsInShoppingList()
         fetchRecipes()
-    }
-
-    LaunchedEffect(selectedTab) {
-        when (selectedTab) {
-            "Todas" -> fetchRecipes()
-            "Favoritas" -> fetchRecipes(favorite = true)
-            else -> fetchRecipes(category = selectedTab)
-        }
     }
 
     LaunchedEffect(initialUrl) {
