@@ -23,6 +23,9 @@ interface RecipeApiService {
     @POST("recipes/import")
     suspend fun importRecipe(@Body request: ImportRequest): ImportStatusResponse
 
+    @POST("recipes/import-text")
+    suspend fun importRecipeFromText(@Body request: ImportTextRequest): ImportStatusResponse
+
     @GET("recipes/{id}")
     suspend fun getRecipeById(@Path("id") id: Int): Recipe
 

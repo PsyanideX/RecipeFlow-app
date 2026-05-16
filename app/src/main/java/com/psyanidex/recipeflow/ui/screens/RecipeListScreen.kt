@@ -28,10 +28,14 @@ fun RecipeListScreen(
     onDeleteRecipe: (Recipe) -> Unit,
     onFavoriteClick: (Recipe) -> Unit,
     onAddRecipeClick: () -> Unit,
+    onImportRecipeText: (String) -> Unit,
     isNetworkAvailable: Boolean,
     onSyncFavorites: () -> Unit
 ) {
     var searchQuery by remember { mutableStateOf("") }
+    var showMenu by remember { mutableStateOf(false) }
+    var showImportDialog by remember { mutableStateOf(false) }
+    var importText by remember { mutableStateOf("") }
 
     val filteredRecipes = recipes.filter { recipe ->
         val matchesSearch = recipe.title.contains(searchQuery, ignoreCase = true) ||
@@ -61,8 +65,29 @@ fun RecipeListScreen(
 
     Scaffold(
         floatingActionButton = {
-            FloatingActionButton(onClick = onAddRecipeClick) {
-                Icon(Icons.Default.Add, contentDescription = "Crear Receta")
+            Box {
+                FloatingActionButton(onClick = { showMenu = true }) {
+                    Icon(Icons.Default.Add, contentDescription = "Opciones de receta")
+                }
+                DropdownMenu(
+                    expanded = showMenu,
+                    onDismissRequest = { showMenu = false }
+                ) {
+                    DropdownMenuItem(
+                        text = { Text("Crear receta") },
+                        onClick = {
+                            showMenu = false
+                            onAddRecipeClick()
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Importar desde texto") },
+                        onClick = {
+                            showMenu = false
+                            showImportDialog = true
+                        }
+                    )
+                }
             }
         }
     ) { paddingValues ->
@@ -148,5 +173,39 @@ fun RecipeListScreen(
                 }
             }
         }
+    }
+
+    if (showImportDialog) {
+        AlertDialog(
+            onDismissRequest = { showImportDialog = false },
+            title = { Text("Importar Receta desde Texto") },
+            text = {
+                OutlinedTextField(
+                    value = importText,
+                    onValueChange = { importText = it },
+                    label = { Text("Pega aquí el texto de la receta") },
+                    modifier = Modifier.fillMaxWidth().height(200.dp)
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (importText.isNotBlank()) {
+                            onImportRecipeText(importText)
+                            showImportDialog = false
+                            importText = ""
+                        }
+                    },
+                    enabled = importText.isNotBlank()
+                ) {
+                    Text("Importar")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showImportDialog = false }) {
+                    Text("Cancelar")
+                }
+            }
+        )
     }
 }

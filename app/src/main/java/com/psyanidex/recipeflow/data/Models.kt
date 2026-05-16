@@ -57,6 +57,8 @@ data class ShoppingListItem(
 
 data class ImportRequest(val html: String)
 
+data class ImportTextRequest(val text: String)
+
 // NUEVO: Respuesta inicial del endpoint de importación
 data class ImportStatusResponse(
     val id: Int,

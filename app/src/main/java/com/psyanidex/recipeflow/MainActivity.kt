@@ -152,6 +152,60 @@ fun MainScreen(initialUrl: String?) {
         }
     }
 
+    fun pollRecipeStatus(recipeId: Int) {
+        scope.launch {
+            var currentStatus = ""
+            var attempts = 0
+            val maxAttempts = 20 // Approx 5 minutes total
+            
+            while (currentStatus != "COMPLETED" && currentStatus != "FAILED" && attempts < maxAttempts) {
+                try {
+                    val recipeState = ApiClient.instance.getRecipeById(recipeId)
+                    currentStatus = recipeState.status ?: ""
+                } catch (e: Exception) {
+                    currentStatus = "FAILED"
+                    Log.e("MainScreen", "Error durante el sondeo", e)
+                }
+                if (currentStatus != "COMPLETED" && currentStatus != "FAILED") {
+                    delay(15000)
+                    attempts++
+                }
+            }
+            withContext(Dispatchers.Main) {
+                if (currentStatus == "COMPLETED") {
+                    Toast.makeText(context, "Receta importada con éxito", Toast.LENGTH_SHORT).show()
+                    fetchRecipes()
+                    navController.navigate("recipeDetail/$recipeId")
+                } else {
+                    Toast.makeText(context, "La importación ha fallado", Toast.LENGTH_LONG).show()
+                    fetchRecipes()
+                }
+            }
+        }
+    }
+
+    fun importFromText(text: String) {
+        scope.launch {
+            isProcessing = true
+            try {
+                val importResponse = ApiClient.instance.importRecipeFromText(ImportTextRequest(text = text))
+                isNetworkAvailable = true
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(context, importResponse.message, Toast.LENGTH_SHORT).show()
+                }
+                pollRecipeStatus(importResponse.id)
+            } catch (e: Exception) {
+                isNetworkAvailable = false
+                Log.e("MainScreen", "Error al importar texto", e)
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(context, "Error al iniciar la importación", Toast.LENGTH_SHORT).show()
+                }
+            } finally {
+                isProcessing = false
+            }
+        }
+    }
+
     LaunchedEffect(Unit) {
         plannedRecipes.addAll(storageManager.plannedRecipesFlow.first())
         plannedDesserts.addAll(storageManager.plannedDessertsFlow.first())
@@ -201,31 +255,7 @@ fun MainScreen(initialUrl: String?) {
                 withContext(Dispatchers.Main) {
                     Toast.makeText(context, importResponse.message, Toast.LENGTH_SHORT).show()
                 }
-                var currentStatus = importResponse.status
-                var recipeId = importResponse.id
-                delay(120000)
-                while (currentStatus != "COMPLETED" && currentStatus != "FAILED") {
-                    try {
-                        val recipeState = ApiClient.instance.getRecipeById(recipeId)
-                        currentStatus = recipeState.status ?: ""
-                    } catch (e: Exception) {
-                        currentStatus = "FAILED"
-                        Log.e("MainScreen", "Error durante el sondeo", e)
-                    }
-                    if (currentStatus != "COMPLETED" && currentStatus != "FAILED") {
-                        delay(15000)
-                    }
-                }
-                withContext(Dispatchers.Main) {
-                    if (currentStatus == "COMPLETED") {
-                        Toast.makeText(context, "Receta importada con éxito", Toast.LENGTH_SHORT).show()
-                        fetchRecipes()
-                        navController.navigate("recipeDetail/$recipeId")
-                    } else {
-                        Toast.makeText(context, "La importación ha fallado", Toast.LENGTH_LONG).show()
-                        fetchRecipes()
-                    }
-                }
+                pollRecipeStatus(importResponse.id)
             } catch (e: Exception) {
                 isNetworkAvailable = false
                 Log.e("MainScreen", "Error al iniciar la importación", e)
@@ -311,6 +341,7 @@ fun MainScreen(initialUrl: String?) {
                             }
                         },
                         onAddRecipeClick = { navController.navigate("createRecipe") },
+                        onImportRecipeText = { text -> importFromText(text) },
                         isNetworkAvailable = isNetworkAvailable,
                         onSyncFavorites = { syncFavoriteRecipes() }
                     )
